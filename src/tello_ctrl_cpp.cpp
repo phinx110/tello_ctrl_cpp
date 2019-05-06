@@ -140,62 +140,6 @@ std::unique_ptr<SuperState> search::next_state(){
 
 
 
-
-
-
-
-
-
-int main(int argc, char* argv[]){
-    std::unique_ptr<SuperState> driver =  std::unique_ptr<SuperState>(new state_rest());
-    while (1){
-    driver = driver->next_state();
-
-    //next = driver->next_state();
-    //delete driver;
-    //driver = next;
-
-    }
-}
-
-
-
-
-
-/*
-class TelloStateInt {
-
-public:
-    TelloStateInt next_state(char key_input);
-};
-
-class state_rest : TelloStateInt{
-    state_rest next_state(char key_input){
-        if( key_input == 'q'){
-            return new state_liftoff();
-        }
-    }
-};
-
-class state_liftoff : TelloStateInt{
-    state_liftoff next_state(char key_input){
-        return this;
-    }
-};
-
-class state_steady : TelloStateInt{
-    TelloStateInt next_state(char key_input);
-};
-
-class state_land : TelloStateInt{
-    TelloStateInt next_state(char key_input);
-};
-
-
-*/
-
-/*
-
 int main(int argc, char* argv[])
 {
     rclcpp::init(argc, argv);
@@ -206,4 +150,3 @@ int main(int argc, char* argv[])
     rclcpp::shutdown();
     return 0;
 }
-*/
