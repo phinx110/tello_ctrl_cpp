@@ -9,6 +9,7 @@
 #include "tello_msgs/srv/tello_action.hpp"
 #include "tello_msgs/msg/tello_response.hpp"
 
+#include "tello_state_mashine.h"
 
 
 using namespace std::chrono_literals;
@@ -21,8 +22,15 @@ class TelloController : public rclcpp::Node
 
 
 public:
-    TelloController() : Node("tell_controller_adyien"), tick_counter(0)
+    TelloController() : Node("tell_controller_adyien")
     {
+        tick_counter = 0;
+        key_input = 0;
+        Tello_sub_rc = 0;
+        tello_srv_rc = 0;
+        Tello_sub_string = "";
+        tello_state =  std::unique_ptr<SuperState>(new state_rest());
+
         //create timers
         tick_timer = create_wall_timer(500ms, std::bind(&TelloController::tick_timer_callback, this));
 
@@ -55,15 +63,19 @@ private:
     char tello_srv_rc;
     std::string Tello_sub_string;
 
+    std::unique_ptr<SuperState> tello_state;
+
 
 
     void tick_timer_callback(){
         RCLCPP_INFO(this->get_logger(), "Timer:%i", tick_counter);
-        if(tick_counter % 2 == 0){
-            send_tello_cmd("takeoff");
-        }else{
-            send_tello_cmd("land");
-        }
+
+        tello_state = tello_state->next_state(this);
+
+        key_input = 0;
+        Tello_sub_rc = 0;
+        tello_srv_rc = 0;
+        Tello_sub_string = "";
         tick_counter++;
     }
 
@@ -87,8 +99,6 @@ private:
             }
             RCLCPP_INFO(this->get_logger(), "waiting for service to appear...");
         }
-        RCLCPP_INFO(this->get_logger(), "here");
-
         auto request = std::make_shared<tello_msgs::srv::TelloAction::Request>();
         request->set__cmd(cmd);
         future_srv_tello_cmd = srv_tello_cmd->async_send_request(request, std::bind(&TelloController::srv_tello_cmd_callback, this, std::placeholders::_1));
@@ -102,6 +112,55 @@ private:
 
 
 };
+
+
+std::unique_ptr<SuperState> state_rest::next_state(){
+    if(key_input == 'q'){
+        return std::unique_ptr<SuperState>(new state_liftoff());
+    }
+    return std::unique_ptr<SuperState>(this);
+}
+
+std::unique_ptr<SuperState> state_liftoff::next_state(){
+    //TODO
+    //return std::unique_ptr<SuperState>(new state_liftoff());
+}
+
+std::unique_ptr<SuperState> state_steady::next_state(){
+    return std::unique_ptr<SuperState>(new state_liftoff());
+}
+
+std::unique_ptr<SuperState> state_land::next_state(){
+    return std::unique_ptr<SuperState>(new state_liftoff());
+}
+
+std::unique_ptr<SuperState> search::next_state(){
+    return std::unique_ptr<SuperState>(new state_liftoff());
+}
+
+
+
+
+
+
+
+
+
+int main(int argc, char* argv[]){
+    std::unique_ptr<SuperState> driver =  std::unique_ptr<SuperState>(new state_rest());
+    while (1){
+    driver = driver->next_state();
+
+    //next = driver->next_state();
+    //delete driver;
+    //driver = next;
+
+    }
+}
+
+
+
+
 
 /*
 class TelloStateInt {
@@ -135,6 +194,8 @@ class state_land : TelloStateInt{
 
 */
 
+/*
+
 int main(int argc, char* argv[])
 {
     rclcpp::init(argc, argv);
@@ -145,3 +206,4 @@ int main(int argc, char* argv[])
     rclcpp::shutdown();
     return 0;
 }
+*/
