@@ -17,7 +17,7 @@ using namespace std::chrono_literals;
 class TelloController : public rclcpp::Node
 {
 
-    constexpr static const auto timer_periode = 500ms;
+    //constexpr static const auto timer_periode = 500ms;
 
 
 public:
@@ -51,15 +51,20 @@ private:
 
     size_t tick_counter;
     char key_input;
-    u_char Tello_sub_rc;
-    u_char tello_srv_rc;
+    char Tello_sub_rc;
+    char tello_srv_rc;
     std::string Tello_sub_string;
 
 
 
     void tick_timer_callback(){
-        tick_counter++;
         RCLCPP_INFO(this->get_logger(), "Timer:%i", tick_counter);
+        if(tick_counter % 2 == 0){
+            send_tello_cmd("takeoff");
+        }else{
+            send_tello_cmd("land");
+        }
+        tick_counter++;
     }
 
     void key_input_callback(const std_msgs::msg::Char::SharedPtr msg){
@@ -68,6 +73,7 @@ private:
     }
 
     void tello_response_callback(const tello_msgs::msg::TelloResponse::SharedPtr msg){
+
         Tello_sub_rc = msg->rc;
         Tello_sub_string = msg->str.c_str();
         RCLCPP_INFO(this->get_logger(), "rc: %c,\tString: %s", msg->rc,msg->str.c_str());
@@ -81,6 +87,8 @@ private:
             }
             RCLCPP_INFO(this->get_logger(), "waiting for service to appear...");
         }
+        RCLCPP_INFO(this->get_logger(), "here");
+
         auto request = std::make_shared<tello_msgs::srv::TelloAction::Request>();
         request->set__cmd(cmd);
         future_srv_tello_cmd = srv_tello_cmd->async_send_request(request, std::bind(&TelloController::srv_tello_cmd_callback, this, std::placeholders::_1));
@@ -90,7 +98,6 @@ private:
         auto result = future.get();
         tello_srv_rc = result->rc;
         RCLCPP_INFO(this->get_logger(), "Service: %c", tello_srv_rc);
-        rclcpp::shutdown();
     }
 
 
