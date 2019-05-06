@@ -36,7 +36,6 @@ public:
         //creat publishers
         pub_tello_twist = create_publisher<geometry_msgs::msg::Twist>("/solo/cmd_vel");
 
-
     }
 
 
@@ -47,10 +46,13 @@ private:
     rclcpp::Subscription<tello_msgs::msg::TelloResponse>::SharedPtr sub_tello_response;
     rclcpp::Publisher<geometry_msgs::msg::Twist>::SharedPtr         pub_tello_twist;
 
+    rclcpp::Client<tello_msgs::srv::TelloAction>::SharedFuture  future_srv_tello_cmd;
+
+
     size_t tick_counter;
     char key_input;
     u_char Tello_sub_rc;
-    char tello_srv_rc;
+    u_char tello_srv_rc;
     std::string Tello_sub_string;
 
 
@@ -69,6 +71,26 @@ private:
         Tello_sub_rc = msg->rc;
         Tello_sub_string = msg->str.c_str();
         RCLCPP_INFO(this->get_logger(), "rc: %c,\tString: %s", msg->rc,msg->str.c_str());
+    }
+
+    void send_tello_cmd (std::string cmd){
+        while (!srv_tello_cmd->wait_for_service(std::chrono::seconds(1))) {
+            if (!rclcpp::ok()) {
+              RCLCPP_ERROR(this->get_logger(), "client interrupted while waiting for service to appear.");
+              return;
+            }
+            RCLCPP_INFO(this->get_logger(), "waiting for service to appear...");
+        }
+        auto request = std::make_shared<tello_msgs::srv::TelloAction::Request>();
+        request->set__cmd(cmd);
+        future_srv_tello_cmd = srv_tello_cmd->async_send_request(request, std::bind(&TelloController::srv_tello_cmd_callback, this, std::placeholders::_1));
+    }
+
+    void srv_tello_cmd_callback(rclcpp::Client<tello_msgs::srv::TelloAction>::SharedFuture future){
+        auto result = future.get();
+        tello_srv_rc = result->rc;
+        RCLCPP_INFO(this->get_logger(), "Service: %c", tello_srv_rc);
+        rclcpp::shutdown();
     }
 
 
