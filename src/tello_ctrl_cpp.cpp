@@ -25,10 +25,10 @@ public:
         Tello_sub_string = "";
 
         //initialize private state machine
-        tello_state =  UniqueState(new StateRest());
+        tello_state =  new StateRest();
 
         //create timers
-        tick_timer = create_wall_timer(500ms, std::bind(&TelloController::tick_timer_callback, this));
+        tick_timer = create_wall_timer(200ms, std::bind(&TelloController::tick_timer_callback, this));
 
         //creat actions
         srv_tello_cmd = create_client<tello_msgs::srv::TelloAction>("/solo/tello_action");
@@ -76,34 +76,33 @@ private:
     //callbacks of subscriptions and services
     void key_input_callback(const std_msgs::msg::Char::SharedPtr msg){
         key_input = msg->data;
-        RCLCPP_INFO(this->get_logger(), "Key: %c", msg->data);
     }
 
     void tello_response_callback(const tello_msgs::msg::TelloResponse::SharedPtr msg){
-
         Tello_sub_rc = msg->rc;
         Tello_sub_string = msg->str.c_str();
-        RCLCPP_INFO(this->get_logger(), "rc: %c,\tString: %s", msg->rc,msg->str.c_str());
     }
 
     void srv_tello_cmd_callback(rclcpp::Client<tello_msgs::srv::TelloAction>::SharedFuture future){
-        auto result = future.get();
-        tello_srv_rc = result->rc;
+        tello_srv_rc = future.get()->rc;
         RCLCPP_INFO(this->get_logger(), "Service: %c", tello_srv_rc);
     }
 
-    //definition of parrent state mashine virtual class
+    //definition of parrent state mashine abstract class
     class SuperState {
        public:
-        virtual std::unique_ptr<SuperState> next_state(TelloController* k) = 0;
+        virtual SuperState* next_state(TelloController*) = 0;
     };
-    using UniqueState = std::unique_ptr<SuperState> ;
-    UniqueState tello_state;
+    SuperState* tello_state;
 
     // update state mashine and reset inputs
     void tick_timer_callback(){
         RCLCPP_INFO(this->get_logger(), "Timer:%i\tkey: %c\tsrv_rc: %c\tsub_rc: %c\tsub_str: %s", tick_counter, key_input, tello_srv_rc, Tello_sub_rc, Tello_sub_string.c_str());
-        tello_state = tello_state->next_state(this);
+        SuperState* sequal = tello_state->next_state(this);
+        if(sequal!=tello_state){
+            delete tello_state;
+            tello_state = sequal;
+        }
 
         key_input = 0;
         Tello_sub_rc = 0;
@@ -112,41 +111,49 @@ private:
         tick_counter++;
     }
 
-    /*********************\
-    |STATE MASHINE CLASSES|
-    \*********************/
+    /***********************\
+    | STATE MASHINE CLASSES |
+    \***********************/
 
     class StateRest : public SuperState {
-        UniqueState  next_state(TelloController* node) override{
-            if (node->key_input == 'q'){
-                return UniqueState  (new StateLiftoff());
+        SuperState*  next_state(TelloController* node) override{
+            if (node->key_input == 'q' && node->tello_srv_rc == 0){
+                return new StateTakeoff();
             }
-            return UniqueState (this);
+            return this;
         }
     };
 
-    class StateLiftoff : public SuperState {
-        UniqueState  next_state(TelloController* node) override{
-            return UniqueState (new StateSteady());
+    class StateTakeoff : public SuperState {
+        SuperState*  next_state(TelloController* node) override{
+            if(node->tello_srv_rc == tello_msgs::srv::TelloAction::Response::OK){
+                return new StateSteady;
+            }
+            node->send_tello_cmd("takeoff");
+            return this;
         }
     };
-
 
     class StateSteady : public SuperState{
-        UniqueState  next_state(TelloController* node) override{
-            if (node->key_input == 'q'){
-                return UniqueState  (new StateLand());
+        SuperState*  next_state(TelloController* node) override{
+            if (node->key_input == 'q' && node->tello_srv_rc == 0){
+                return new StateLand();
             }
-            return UniqueState (this);
+            return this;
         }
     };
 
     class StateLand : public SuperState {
-        UniqueState  next_state(TelloController* node) override{
-            return UniqueState (new StateRest());
+        SuperState*  next_state(TelloController* node) override{
+            if(node->tello_srv_rc == tello_msgs::srv::TelloAction::Response::OK){
+                return new StateRest;
+            }
+            node->send_tello_cmd("land");
+            return this;
         }
     };
 
+    // end of TelloController class
 };
 
 
@@ -154,8 +161,6 @@ int main(int argc, char* argv[])
 {
     rclcpp::init(argc, argv);
     auto drone1 = std::make_shared<TelloController>();
-
-
     rclcpp::spin(drone1);
     rclcpp::shutdown();
     return 0;
