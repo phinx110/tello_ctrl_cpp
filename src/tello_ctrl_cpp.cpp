@@ -131,31 +131,16 @@ private:
     // logic loop: update state mashine and reset inputs
     void tick_timer_callback(){
         RCLCPP_INFO(this->get_logger(), "\n  Timer:%i\tkey: %c  ", tick_counter, key_input);
-        std::printf("  srv_rc: %i\n  sub_rc: %i\tsub_str: %s\n", tello_srv_rc, Tello_sub_rc, Tello_sub_string.c_str());
-        try {
-            if(tf2_buffer->canTransform("marker_001", tf2::TimePointZero, "base_link", tf2::TimePointZero, "map")){
-                auto sample = tf2_buffer->lookupTransform("marker_001", tf2::TimePointZero, "base_link", tf2::TimePointZero, "map");
-                tf2_valid = sample.transform != DroneInMarker001Frame;
-                if(tf2_valid){
-                    DroneInMarker001Frame = sample.transform;
-                }
-                rclcpp::Time stamp = sample.header.stamp;
-                printf("  sec:%lf\n", stamp.seconds());
-                auto p = sample.transform.translation;
-                printf("  translation:\t  x:%f, y:%f, z:%f\n",p.x, p.y, p.z);
-                auto q = sample.transform.rotation;
-                printf("  rotation:\t  x:%f, y:%f, z:%f, w:%f\n",q.x, q.y, q.z, q.w);
-            }else{
-                printf("  invalid");
-                tf2_valid = false;
+        std::printf("  srv_rc: %i\t\t  sub_rc: %i\tsub_str: %s\n", tello_srv_rc, Tello_sub_rc, Tello_sub_string.c_str());
+        if(tf2_buffer->canTransform("marker_001", tf2::TimePointZero, "base_link", tf2::TimePointZero, "map")){
+            geometry_msgs::msg::Transform sample = tf2_buffer->lookupTransform("marker_001", tf2::TimePointZero, "base_link", tf2::TimePointZero, "map").transform;
+            tf2_valid = sample != DroneInMarker001Frame;
+            if(tf2_valid){
+            DroneInMarker001Frame = sample;
             }
-
-        } catch (tf2::TransformException &ex) {
-            printf("  %s\n",ex.what());
+        }else{
             tf2_valid = false;
-        }{}
-        std::printf("  tf2_valid: %s\n", tf2_valid ? "True":"False");
-
+        }
         SuperState* sequal = tello_state->next_state(this);
         if(sequal!=tello_state){
             delete tello_state;
@@ -176,7 +161,7 @@ private:
     class StateRest : public SuperState {
         SuperState*  next_state(TelloController* node) override{
             std::printf("  state: Rest\n");
-            if (node->key_input == 'q' && node->tello_srv_rc == 0){
+            if (node->key_input == 'q'){
                 return new StateTakeoff;
             }
             return this;
@@ -197,9 +182,9 @@ private:
     class StateSteady : public SuperState{
         SuperState*  next_state(TelloController* node) override{
             std::printf("  state: Steady\n");
-            if (node->key_input == 'q' && node->tello_srv_rc == 0){
+            if (node->key_input == 'q'){
                 return new StateLand();
-            }else if(node->key_input == 'w' && node->tello_srv_rc == 0){
+            }else if(node->key_input == 'w'){
                 return new StateSearchAruco(node);
             }
             return this;
@@ -261,39 +246,29 @@ private:
                 #define Drone_pos_r node->DroneInMarker001Frame.rotation
                 tf2::Quaternion transform_quaternion = tf2::Quaternion(Drone_pos_r.x, Drone_pos_r.y, Drone_pos_r.z, Drone_pos_r.w);
                 tf2::Vector3 transform_translation = tf2::Vector3(Drone_pos_t.x, Drone_pos_t.y, Drone_pos_t.z);
-
                 tf2::Vector3 marker_ref_drone_tran = node->demo_position.getOrigin() - transform_translation;
                 tf2::Vector3 drone_ref_drone_tran = tf2::quatRotate(transform_quaternion.inverse(), marker_ref_drone_tran );
-
-                printf("  marker_ref_drone_tran:\t  x:%f, y:%f, z:%f\n",marker_ref_drone_tran.x(), marker_ref_drone_tran.y(), marker_ref_drone_tran.z());
-                printf("  drone_ref_drone_tran: \t  x:%f, y:%f, z:%f\n",drone_ref_drone_tran.x(), drone_ref_drone_tran.y(), drone_ref_drone_tran.z());
-
                 tf2::Vector3 translation_drone_to_marker = tf2::quatRotate(transform_quaternion.inverse(), transform_translation);
                 double angle = std::atan(translation_drone_to_marker.y()/translation_drone_to_marker.x());
                 double a = angle;
                 double x = drone_ref_drone_tran.x();
                 double y = drone_ref_drone_tran.y();
                 double z = drone_ref_drone_tran.z();
-                if(std::abs(x)>4 || std::abs(y)>4 || std::abs(z)>4){
+                if(std::abs(x)>5 || std::abs(y)>5 || std::abs(z)>5){
+                    printf("  bad coordinates\n");
                     node->pub_tello_twist->publish(geometry_msgs::msg::Twist());
                     return this;
                 }
-
                 a = (std::abs(a)>0.05 ? (a>0.0 ? std::min(std::max(a*1,0.05),1.0) : std::max(std::min(a*1,-0.05),-1.0)) : 0);
                 x = (std::abs(x)>0.08 ? (x>0.0 ? std::min(std::max(x*0.2,0.1),1.0) : std::max(std::min(x*0.2,-0.1),-1.0)) : 0);
                 y = (std::abs(y)>0.08 ? (y>0.0 ? std::min(std::max(y*0.2,0.1),1.0) : std::max(std::min(y*0.2,-0.1),-1.0)) : 0);
                 z = (std::abs(z)>0.06 ? (z>0.0 ? std::min(std::max(z*0.5,0.10),1.0) : std::max(std::min(z*0.5,-0.10),-1.0)) : 0);
-
-                printf("  twist:                \t  x:%f, y:%f, z:%f\n",x,y,z);
-                printf("  angle: %f\n",angle);
-
                 geometry_msgs::msg::Twist twist = geometry_msgs::msg::Twist();
                 twist.angular.z = a;
                 twist.linear.x = x;
                 twist.linear.y = y;
                 twist.linear.z = z;
                 node->pub_tello_twist->publish(twist);
-
             }else{
                 node->pub_tello_twist->publish(geometry_msgs::msg::Twist());
                 return new StateSteady();
