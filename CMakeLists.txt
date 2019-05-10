@@ -21,6 +21,8 @@ find_package(geometry_msgs REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(std_msgs REQUIRED)
 find_package(tello_msgs REQUIRED)
+find_package(tf2_ros REQUIRED)
+find_package(tf2 REQUIRED)
 
 add_executable(tello_ctrl_cpp src/tello_ctrl_cpp.cpp)
 target_include_directories(tello_ctrl_cpp PUBLIC
@@ -32,6 +34,8 @@ ament_target_dependencies(
   "rclcpp"
   "std_msgs"
   "tello_msgs"
+  "tf2_ros"
+  "tf2"
 )
 
 install(TARGETS tello_ctrl_cpp
