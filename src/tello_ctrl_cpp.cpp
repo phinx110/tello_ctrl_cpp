@@ -162,16 +162,17 @@ private:
         SuperState*  next_state(TelloController* node) override{
             std::printf("  state: Rest\n");
             if (node->key_input == 'q'){
-                return new StateTakeoff;
+                return new StateTakeOff;
             }
             return this;
         }
     };
 
-    class StateTakeoff : public SuperState {
+    class StateTakeOff : public SuperState {
         SuperState*  next_state(TelloController* node) override{
             std::printf("  state: takeoff\n");
-            if(node->tello_srv_rc == tello_msgs::srv::TelloAction::Response::OK){
+            if((node->tello_srv_rc == tello_msgs::srv::TelloAction::Response::ERROR_BUSY && node->Tello_sub_rc == tello_msgs::msg::TelloResponse::OK   )
+            || (node->tello_srv_rc == tello_msgs::srv::TelloAction::Response::OK         && node->Tello_sub_rc != 0)){
                 return new StateSteady;
             }
             node->send_tello_cmd("takeoff");
@@ -194,7 +195,8 @@ private:
     class StateLand : public SuperState {
         SuperState*  next_state(TelloController* node) override{
             std::printf("  state: Land\n");
-            if(node->tello_srv_rc == tello_msgs::srv::TelloAction::Response::OK){
+            if((node->tello_srv_rc == tello_msgs::srv::TelloAction::Response::ERROR_BUSY && node->Tello_sub_rc == tello_msgs::msg::TelloResponse::OK   )
+            || (node->tello_srv_rc == tello_msgs::srv::TelloAction::Response::OK         && node->Tello_sub_rc != 0)){
                 return new StateRest;
             }
             node->send_tello_cmd("land");
