@@ -51,6 +51,7 @@ public:
         tf2_buffer = std::make_shared<tf2_ros::Buffer>(clock);
         tf2_listener = std::make_shared<tf2_ros::TransformListener>(*tf2_buffer);
         tf2_valid = false;
+        last_time_tf2_valid = rclcpp::Time(0,0);
 
         //define demo station point
         demo_position = tf2::Transform();
@@ -85,6 +86,7 @@ private:
     std::shared_ptr<tf2_ros::TransformListener> tf2_listener;
     geometry_msgs::msg::Transform DroneInMarker001Frame;
     bool tf2_valid;
+    rclcpp::Time last_time_tf2_valid;
 
     //positioning
     tf2::Transform demo_position;
@@ -137,6 +139,7 @@ private:
             tf2_valid = sample != DroneInMarker001Frame;
             if(tf2_valid){
             DroneInMarker001Frame = sample;
+            last_time_tf2_valid  = this->now(); //lookupTransform timestamp is buggy
             }
         }else{
             tf2_valid = false;
@@ -236,14 +239,10 @@ private:
     class StateGoToPosition : public SuperState {
         SuperState*  next_state(TelloController* node) override{
             std::printf("  state: GoToPosition\n");
-            if (node->key_input == 'e'){
+            if (node->key_input == 'q'){
                 node->pub_tello_twist->publish(geometry_msgs::msg::Twist());
                 return new StateSteady;
-            }else if (node->key_input == 'q'){
-                node->pub_tello_twist->publish(geometry_msgs::msg::Twist());
-                return new StateSteady;
-            }
-            if(node->tf2_valid){
+            }else if(node->tf2_valid){
                 #define Drone_pos_t node->DroneInMarker001Frame.translation
                 #define Drone_pos_r node->DroneInMarker001Frame.rotation
                 tf2::Quaternion transform_quaternion = tf2::Quaternion(Drone_pos_r.x, Drone_pos_r.y, Drone_pos_r.z, Drone_pos_r.w);
@@ -271,11 +270,13 @@ private:
                 twist.linear.y = y;
                 twist.linear.z = z;
                 node->pub_tello_twist->publish(twist);
-            }else{
-                node->pub_tello_twist->publish(geometry_msgs::msg::Twist());
-                return new StateSteady();
+                return this;
             }
-            return this;
+            node->pub_tello_twist->publish(geometry_msgs::msg::Twist());
+            if(node->last_time_tf2_valid + rclcpp::Duration(5,0) > node->now()){
+                return this;
+            }
+            return new StateSteady();
         }
     };
 
