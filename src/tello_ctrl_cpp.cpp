@@ -260,10 +260,10 @@ private:
                     node->pub_tello_twist->publish(geometry_msgs::msg::Twist());
                     return this;
                 }
-                a = (std::abs(a)>0.05 ? (a>0.0 ? std::min(std::max(a*1,0.05),1.0) : std::max(std::min(a*1,-0.05),-1.0)) : 0);
-                x = (std::abs(x)>0.08 ? (x>0.0 ? std::min(std::max(x*0.2,0.1),1.0) : std::max(std::min(x*0.2,-0.1),-1.0)) : 0);
-                y = (std::abs(y)>0.08 ? (y>0.0 ? std::min(std::max(y*0.2,0.1),1.0) : std::max(std::min(y*0.2,-0.1),-1.0)) : 0);
-                z = (std::abs(z)>0.06 ? (z>0.0 ? std::min(std::max(z*0.5,0.10),1.0) : std::max(std::min(z*0.5,-0.10),-1.0)) : 0);
+                a = (std::abs(a)>0.05 ? (a>0.0 ? std::min(std::max(a*2,0.05),1.0) : std::max(std::min(a*2,-0.05),-1.0)) : a);
+                x = (std::abs(x)>0.08 ? (x>0.0 ? std::min(std::max(x*0.1,0.1),1.0) : std::max(std::min(x*0.1,-0.1),-1.0)) : x*0.1);
+                y = (std::abs(y)>0.08 ? (y>0.0 ? std::min(std::max(y*0.1,0.1),1.0) : std::max(std::min(y*0.1,-0.1),-1.0)) : y*0.1);
+                z = (std::abs(z)>0.06 ? (z>0.0 ? std::min(std::max(z*0.5,0.10),1.0) : std::max(std::min(z*0.5,-0.10),-1.0)) : z*0.5);
                 geometry_msgs::msg::Twist twist = geometry_msgs::msg::Twist();
                 twist.angular.z = a;
                 twist.linear.x = x;
