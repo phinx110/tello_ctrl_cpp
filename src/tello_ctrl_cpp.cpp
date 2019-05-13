@@ -55,8 +55,8 @@ public:
 
         //define demo station point
         demo_position = tf2::Transform();
-        demo_position.setOrigin(tf2::Vector3(1.2,0.3,1));
-        demo_position.setRotation(tf2::Quaternion(-0.198704,0.687806,0.694588,0.070622));
+        demo_position.setOrigin(tf2::Vector3(1.6,0.4,1.2));
+        demo_position_angle_offset = 0.35;
     }
 
 private:
@@ -90,6 +90,7 @@ private:
 
     //positioning
     tf2::Transform demo_position;
+    double demo_position_angle_offset;
 
     /************************\
     |    MEMBER FUNCTIONS    |
@@ -214,7 +215,7 @@ private:
         StateSearchAruco(TelloController* node){
             stop = node->now() + rclcpp::Duration(20,0);
             twist = geometry_msgs::msg::Twist();
-            twist.linear.z = 0.15;
+            twist.linear.z = 0.20;
             twist.angular.z = 0.6;
         }
 
@@ -237,6 +238,15 @@ private:
     };
 
     class StateGoToPosition : public SuperState {
+        double z_sum= 0.15;
+        double lim = 0.3;
+
+        double x_avg;
+        double y_avg;
+        double z_avg;
+
+        //bool in_position;
+        //bool in_position_valid;
         SuperState*  next_state(TelloController* node) override{
             std::printf("  state: GoToPosition\n");
             if (node->key_input == 'q'){
@@ -250,20 +260,55 @@ private:
                 tf2::Vector3 marker_ref_drone_tran = node->demo_position.getOrigin() - transform_translation;
                 tf2::Vector3 drone_ref_drone_tran = tf2::quatRotate(transform_quaternion.inverse(), marker_ref_drone_tran );
                 tf2::Vector3 translation_drone_to_marker = tf2::quatRotate(transform_quaternion.inverse(), transform_translation);
-                double angle = std::atan(translation_drone_to_marker.y()/translation_drone_to_marker.x());
-                double a = angle;
                 double x = drone_ref_drone_tran.x();
                 double y = drone_ref_drone_tran.y();
                 double z = drone_ref_drone_tran.z();
-                if(std::abs(x)>5 || std::abs(y)>5 || std::abs(z)>5){
-                    printf("  bad coordinates\n");
-                    node->pub_tello_twist->publish(geometry_msgs::msg::Twist());
-                    return this;
+                bool in_position = (x < 0.15 && y < 0.15 && z < 0.10);
+                bool in_position_valid = (std::abs(x_avg - x) < 0.5) || (std::abs(y_avg - y) < 0.5) || (std::abs(z_avg - z) < 0.5);
+                std::printf("  tf2_valid: %s\tin_position: %s\tposition_is_valid: %s\n",node->tf2_valid?"true":"false", in_position?"true":"false", in_position_valid?"true":"false");
+
+                if(in_position){
+                    if(!in_position_valid){
+                        x = x_avg;
+                        y = y_avg;
+                        z = z_avg;
+                    }else{
+                        x_avg = 0.6*x_avg + 0.4*x;
+                        y_avg = 0.6*y_avg + 0.4*y;
+                        z_avg = 0.6*z_avg + 0.4*z;
+                        x = x_avg;
+                        y = y_avg;
+                        z = z_avg;
+                    }
+                }else{
+                    x_avg = x;
+                    y_avg = y;
+                    z_avg = z;
                 }
-                a = (std::abs(a)>0.05 ? (a>0.0 ? std::min(std::max(a*2,0.05),1.0) : std::max(std::min(a*2,-0.05),-1.0)) : a);
-                x = (std::abs(x)>0.08 ? (x>0.0 ? std::min(std::max(x*0.1,0.1),1.0) : std::max(std::min(x*0.1,-0.1),-1.0)) : x*0.1);
-                y = (std::abs(y)>0.08 ? (y>0.0 ? std::min(std::max(y*0.1,0.1),1.0) : std::max(std::min(y*0.1,-0.1),-1.0)) : y*0.1);
-                z = (std::abs(z)>0.06 ? (z>0.0 ? std::min(std::max(z*0.5,0.10),1.0) : std::max(std::min(z*0.5,-0.10),-1.0)) : z*0.5);
+
+                #define clipping_float(x, lower, upper) std::min(std::max(x, lower), upper)
+                x = clipping_float(0.4*x,-lim,lim);
+                y = clipping_float(0.4*y,-lim,lim);
+                if(std::abs(z) < 0.20){
+                    z_sum += 0.01*z;
+                    z += z_sum;
+                }
+                z = clipping_float(0.4*z, -lim, lim);
+                double angle = std::atan(translation_drone_to_marker.y()/translation_drone_to_marker.x());
+                double future_angle = std::atan((translation_drone_to_marker.y()+0.4*y)/(translation_drone_to_marker.x()+0.4*x));
+
+                double a;
+
+                if((std::abs(future_angle) < std::abs(angle)) && !in_position){
+                    a = 0;
+                } else {
+                    a = (in_position && in_position_valid)? 1.2 * (future_angle + node->demo_position_angle_offset) : 2.0 * future_angle;
+                }
+
+
+                std::printf("  positions\tx: %lf\ty: %lf\tz: %lf\n", Drone_pos_t.x, Drone_pos_t.y, Drone_pos_t.z);
+                std::printf("  vector   \tx: %lf\ty: %lf\tz: %lf\ta: %lf\n", x, y, z, a);
+
                 geometry_msgs::msg::Twist twist = geometry_msgs::msg::Twist();
                 twist.angular.z = a;
                 twist.linear.x = x;
