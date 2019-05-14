@@ -238,15 +238,12 @@ private:
     };
 
     class StateGoToPosition : public SuperState {
-        double z_sum= 0.15;
+        double z_sum= 0.14;
         double lim = 0.3;
-
         double x_avg;
         double y_avg;
         double z_avg;
-
-        //bool in_position;
-        //bool in_position_valid;
+        short in_position_count = 0;
         SuperState*  next_state(TelloController* node) override{
             std::printf("  state: GoToPosition\n");
             if (node->key_input == 'q'){
@@ -266,26 +263,25 @@ private:
                 bool in_position = (x < 0.15 && y < 0.15 && z < 0.10);
                 bool in_position_valid = (std::abs(x_avg - x) < 0.5) || (std::abs(y_avg - y) < 0.5) || (std::abs(z_avg - z) < 0.5);
                 std::printf("  tf2_valid: %s\tin_position: %s\tposition_is_valid: %s\n",node->tf2_valid?"true":"false", in_position?"true":"false", in_position_valid?"true":"false");
-
+                if(in_position && in_position_valid){
+                    in_position_count = in_position_count<31?in_position_count+1:in_position_count;
+                }else{
+                    in_position_count = in_position_count>0?in_position_count-1:in_position_count;
+                }
                 if(in_position){
-                    if(!in_position_valid){
-                        x = x_avg;
-                        y = y_avg;
-                        z = z_avg;
-                    }else{
+                    if(in_position_valid){
                         x_avg = 0.6*x_avg + 0.4*x;
                         y_avg = 0.6*y_avg + 0.4*y;
                         z_avg = 0.6*z_avg + 0.4*z;
-                        x = x_avg;
-                        y = y_avg;
-                        z = z_avg;
                     }
+                    x = x_avg;
+                    y = y_avg;
+                    z = z_avg;
                 }else{
-                    x_avg = x;
-                    y_avg = y;
-                    z_avg = z;
+                x_avg = x;
+                y_avg = y;
+                z_avg = z;
                 }
-
                 #define clipping_float(x, lower, upper) std::min(std::max(x, lower), upper)
                 x = clipping_float(0.4*x,-lim,lim);
                 y = clipping_float(0.4*y,-lim,lim);
@@ -296,19 +292,19 @@ private:
                 z = clipping_float(0.4*z, -lim, lim);
                 double angle = std::atan(translation_drone_to_marker.y()/translation_drone_to_marker.x());
                 double future_angle = std::atan((translation_drone_to_marker.y()+0.4*y)/(translation_drone_to_marker.x()+0.4*x));
-
                 double a;
-
                 if((std::abs(future_angle) < std::abs(angle)) && !in_position){
                     a = 0;
                 } else {
-                    a = (in_position && in_position_valid)? 1.2 * (future_angle + node->demo_position_angle_offset) : 2.0 * future_angle;
+                    a = (in_position_count>15)? 1.2 * (future_angle + node->demo_position_angle_offset) : 2.0 * future_angle;
                 }
-
-
+                double sin_a = std::sin(-a);
+                double cos_a = std::cos(-a);
+                double x_new = cos_a * x - sin_a * y;
+                y = sin_a * x + cos_a * y;
+                x  = x_new;
                 std::printf("  positions\tx: %lf\ty: %lf\tz: %lf\n", Drone_pos_t.x, Drone_pos_t.y, Drone_pos_t.z);
                 std::printf("  vector   \tx: %lf\ty: %lf\tz: %lf\ta: %lf\n", x, y, z, a);
-
                 geometry_msgs::msg::Twist twist = geometry_msgs::msg::Twist();
                 twist.angular.z = a;
                 twist.linear.x = x;
