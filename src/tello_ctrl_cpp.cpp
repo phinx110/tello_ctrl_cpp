@@ -5,6 +5,7 @@
 #include "std_msgs/msg/string.hpp"
 #include "std_msgs/msg/char.hpp"
 #include "geometry_msgs/msg/twist.hpp"
+#include "geometry_msgs/msg/point.hpp"
 
 #include "tello_msgs/srv/tello_action.hpp"
 #include "tello_msgs/msg/tello_response.hpp"
@@ -38,8 +39,9 @@ public:
         srv_tello_cmd = create_client<tello_msgs::srv::TelloAction>("/solo/tello_action");
 
         //creat subscriptions
-        sub_key_input = create_subscription<std_msgs::msg::Char>("/raw_keyboard", std::bind(&TelloController::key_input_callback, this, std::placeholders::_1));
-        sub_tello_response = create_subscription<tello_msgs::msg::TelloResponse>("/solo/tello_response", std::bind(&TelloController::tello_response_callback, this, std::placeholders::_1));
+        sub_key_input = create_subscription<std_msgs::msg::Char>("/raw_keyboard", std::bind(&TelloController::sub_key_input_callback, this, std::placeholders::_1));
+        sub_tello_response = create_subscription<tello_msgs::msg::TelloResponse>("/solo/tello_response", std::bind(&TelloController::sub_tello_response_callback, this, std::placeholders::_1));
+        sub_demo_position = create_subscription<geometry_msgs::msg::Point>("/solo/demo_position", std::bind(&TelloController::sub_demo_position_callback, this, std::placeholders::_1));
 
         //creat publishers
         pub_tello_twist = create_publisher<geometry_msgs::msg::Twist>("/solo/cmd_vel");
@@ -55,8 +57,8 @@ public:
 
         //define demo station point
         demo_position = tf2::Transform();
-        demo_position.setOrigin(tf2::Vector3(1.6,0.4,1.2));
-        demo_position_angle_offset = 0.35;
+        demo_position.setOrigin(tf2::Vector3(0.0,0.2,1.0));
+        demo_position_angle_offset = 0.2;
     }
 
 private:
@@ -68,6 +70,7 @@ private:
     rclcpp::Client<tello_msgs::srv::TelloAction>::SharedPtr         srv_tello_cmd;
     rclcpp::Subscription<std_msgs::msg::Char>::SharedPtr            sub_key_input;
     rclcpp::Subscription<tello_msgs::msg::TelloResponse>::SharedPtr sub_tello_response;
+    rclcpp::Subscription<geometry_msgs::msg::Point>::SharedPtr      sub_demo_position;
     rclcpp::Publisher<geometry_msgs::msg::Twist>::SharedPtr         pub_tello_twist;
     rclcpp::Client<tello_msgs::srv::TelloAction>::SharedFuture      future_srv_tello_cmd;
 
@@ -111,11 +114,11 @@ private:
     }
 
     //callbacks of subscriptions and services
-    void key_input_callback(const std_msgs::msg::Char::SharedPtr msg){
+    void sub_key_input_callback(const std_msgs::msg::Char::SharedPtr msg){
         key_input = msg->data;
     }
 
-    void tello_response_callback(const tello_msgs::msg::TelloResponse::SharedPtr msg){
+    void sub_tello_response_callback(const tello_msgs::msg::TelloResponse::SharedPtr msg){
         Tello_sub_rc = msg->rc;
         Tello_sub_string = msg->str.c_str();
     }
@@ -124,6 +127,9 @@ private:
         tello_srv_rc = future.get()->rc;
     }
 
+    void sub_demo_position_callback(const geometry_msgs::msg::Point::SharedPtr msg){
+        demo_position.setOrigin(tf2::Vector3(msg.get()->x,msg.get()->y,msg.get()->z));
+    }
     //definition state mashine abstract class inferited by all states
     class SuperState {
        public:
@@ -264,7 +270,7 @@ private:
                 bool in_position_valid = (std::abs(x_avg - x) < 0.5) || (std::abs(y_avg - y) < 0.5) || (std::abs(z_avg - z) < 0.5);
                 std::printf("  tf2_valid: %s\tin_position: %s\tposition_is_valid: %s\n",node->tf2_valid?"true":"false", in_position?"true":"false", in_position_valid?"true":"false");
                 if(in_position && in_position_valid){
-                    in_position_count = in_position_count<31?in_position_count+1:in_position_count;
+                    in_position_count = in_position_count<7?in_position_count+1:in_position_count;
                 }else{
                     in_position_count = in_position_count>0?in_position_count-1:in_position_count;
                 }
@@ -296,7 +302,7 @@ private:
                 if((std::abs(future_angle) < std::abs(angle)) && !in_position){
                     a = 0;
                 } else {
-                    a = (in_position_count>15)? 1.2 * (future_angle + node->demo_position_angle_offset) : 2.0 * future_angle;
+                    a = (in_position_count>3)? 1.2 * (future_angle + node->demo_position_angle_offset) : 2.0 * future_angle;
                 }
                 double sin_a = std::sin(-a);
                 double cos_a = std::cos(-a);
