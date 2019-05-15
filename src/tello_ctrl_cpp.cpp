@@ -130,6 +130,7 @@ private:
     void sub_demo_position_callback(const geometry_msgs::msg::Point::SharedPtr msg){
         demo_position.setOrigin(tf2::Vector3(msg.get()->x,msg.get()->y,msg.get()->z));
     }
+
     //definition state mashine abstract class inferited by all states
     class SuperState {
        public:
@@ -244,13 +245,12 @@ private:
     };
 
     class StateGoToPosition : public SuperState {
-        double z_sum= 0.14;
-        double lim = 0.3;
-        double x_avg;
-        double y_avg;
-        double z_avg;
-        short in_position_count = 0;
+
         SuperState*  next_state(TelloController* node) override{
+            tf2::Vector3 Kp = tf2::Vector3(0.5,0.5,0.5);
+            tf2::Vector3 Ki = tf2::Vector3(0.3,0.3,0.2);
+            tf2::Vector3 integral = tf2::Vector3(0.0,0.0,0.0);
+            double dt = 0.2;
             std::printf("  state: GoToPosition\n");
             if (node->key_input == 'q'){
                 node->pub_tello_twist->publish(geometry_msgs::msg::Twist());
@@ -263,46 +263,27 @@ private:
                 tf2::Vector3 marker_ref_drone_tran = node->demo_position.getOrigin() - transform_translation;
                 tf2::Vector3 drone_ref_drone_tran = tf2::quatRotate(transform_quaternion.inverse(), marker_ref_drone_tran );
                 tf2::Vector3 translation_drone_to_marker = tf2::quatRotate(transform_quaternion.inverse(), transform_translation);
-                double x = drone_ref_drone_tran.x();
-                double y = drone_ref_drone_tran.y();
-                double z = drone_ref_drone_tran.z();
-                bool in_position = (x < 0.15 && y < 0.15 && z < 0.10);
-                bool in_position_valid = (std::abs(x_avg - x) < 0.5) || (std::abs(y_avg - y) < 0.5) || (std::abs(z_avg - z) < 0.5);
-                std::printf("  tf2_valid: %s\tin_position: %s\tposition_is_valid: %s\n",node->tf2_valid?"true":"false", in_position?"true":"false", in_position_valid?"true":"false");
-                if(in_position && in_position_valid){
-                    in_position_count = in_position_count<7?in_position_count+1:in_position_count;
-                }else{
-                    in_position_count = in_position_count>0?in_position_count-1:in_position_count;
-                }
+                #define error drone_ref_drone_tran
+                bool in_position = (error.x() < 0.20 && error.y() < 0.20 && error.z() < 0.15);
+                tf2::Vector3 Pout = error*Kp;
                 if(in_position){
-                    if(in_position_valid){
-                        x_avg = 0.6*x_avg + 0.4*x;
-                        y_avg = 0.6*y_avg + 0.4*y;
-                        z_avg = 0.6*z_avg + 0.4*z;
-                    }
-                    x = x_avg;
-                    y = y_avg;
-                    z = z_avg;
+                    integral += error * dt;
                 }else{
-                x_avg = x;
-                y_avg = y;
-                z_avg = z;
+                    integral = tf2::Vector3(0.0,0.0,0.0);
                 }
-                #define clipping_float(x, lower, upper) std::min(std::max(x, lower), upper)
-                x = clipping_float(0.4*x,-lim,lim);
-                y = clipping_float(0.4*y,-lim,lim);
-                if(std::abs(z) < 0.20){
-                    z_sum += 0.01*z;
-                    z += z_sum;
-                }
-                z = clipping_float(0.4*z, -lim, lim);
+                tf2::Vector3 Iout = integral * Ki;
+                tf2::Vector3 output = Pout + Iout;
+                double x = std::max(std::min(output.x(),0.3),-0.3);
+                double y = std::max(std::min(output.y(),0.3),-0.3);
+                double z = std::max(std::min(output.z(),0.3),-0.3);
+
                 double angle = std::atan(translation_drone_to_marker.y()/translation_drone_to_marker.x());
-                double future_angle = std::atan((translation_drone_to_marker.y()+0.4*y)/(translation_drone_to_marker.x()+0.4*x));
+                double future_angle = std::atan((translation_drone_to_marker.y()+0.6*y)/(translation_drone_to_marker.x()+0.6*x));
                 double a;
                 if((std::abs(future_angle) < std::abs(angle)) && !in_position){
                     a = 0;
                 } else {
-                    a = (in_position_count>3)? 1.2 * (future_angle + node->demo_position_angle_offset) : 2.0 * future_angle;
+                    a = in_position? 1.2 * (future_angle + node->demo_position_angle_offset) : 2.0 * future_angle;
                 }
                 double sin_a = std::sin(-a);
                 double cos_a = std::cos(-a);
@@ -311,11 +292,12 @@ private:
                 x  = x_new;
                 std::printf("  positions\tx: %lf\ty: %lf\tz: %lf\n", Drone_pos_t.x, Drone_pos_t.y, Drone_pos_t.z);
                 std::printf("  vector   \tx: %lf\ty: %lf\tz: %lf\ta: %lf\n", x, y, z, a);
+                std::printf("  integral \tx: %lf\ty: %lf\tz: %lf\n", integral.x(), integral.y(), integral.z());
                 geometry_msgs::msg::Twist twist = geometry_msgs::msg::Twist();
                 twist.angular.z = a;
-                twist.linear.x = x;
-                twist.linear.y = y;
-                twist.linear.z = z;
+                twist.linear.x = x>0.01 ? x+0.02 : x<-0.01? x-0.02 : x;
+                twist.linear.y = y>0.01 ? y+0.02 : y<-0.01? y-0.02 : y;
+                twist.linear.z = z>0.01 ? z+0.05 : z<-0.01? z-0.05 : 0;
                 node->pub_tello_twist->publish(twist);
                 return this;
             }
