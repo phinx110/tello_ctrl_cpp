@@ -19,7 +19,9 @@ class TelloController : public rclcpp::Node
 {
 
 public:
-    TelloController() : Node("tell_controller_adyien")
+    TelloController()
+        : Node("tell_controller_adyien")
+        , default_qos(rclcpp::QoSInitialization::from_rmw(rmw_qos_profile_default))
     {
         //initialize message and other primitive private fields
         tick_counter = 0;
@@ -38,12 +40,12 @@ public:
         srv_tello_cmd = create_client<tello_msgs::srv::TelloAction>("/solo/tello_action");
 
         //creat subscriptions
-        sub_key_input = create_subscription<std_msgs::msg::Char>("/raw_keyboard", std::bind(&TelloController::sub_key_input_callback, this, std::placeholders::_1));
-        sub_tello_response = create_subscription<tello_msgs::msg::TelloResponse>("/solo/tello_response", std::bind(&TelloController::sub_tello_response_callback, this, std::placeholders::_1));
-        sub_demo_position = create_subscription<geometry_msgs::msg::Point>("/solo/demo_position", std::bind(&TelloController::sub_demo_position_callback, this, std::placeholders::_1));
+        sub_key_input = create_subscription<std_msgs::msg::Char>("/raw_keyboard", default_qos, std::bind(&TelloController::sub_key_input_callback, this, std::placeholders::_1));
+        sub_tello_response = create_subscription<tello_msgs::msg::TelloResponse>("/solo/tello_response", default_qos, std::bind(&TelloController::sub_tello_response_callback, this, std::placeholders::_1));
+        sub_demo_position = create_subscription<geometry_msgs::msg::Point>("/solo/demo_position", default_qos, std::bind(&TelloController::sub_demo_position_callback, this, std::placeholders::_1));
 
         //creat publishers
-        pub_tello_twist = create_publisher<geometry_msgs::msg::Twist>("/solo/cmd_vel");
+        pub_tello_twist = create_publisher<geometry_msgs::msg::Twist>("/solo/cmd_vel", default_qos);
 
         //create clock (for tf2 buffer)
         clock = std::make_shared<rclcpp::Clock>(RCL_SYSTEM_TIME);
@@ -61,6 +63,9 @@ public:
     }
 
 private:
+
+    //Quality of Service
+    rclcpp::QoS default_qos;
 
     //ROS2 timer
     rclcpp::TimerBase::SharedPtr                                    tick_timer;
