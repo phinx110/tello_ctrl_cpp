@@ -80,7 +80,6 @@ private:
     rclcpp::Publisher<geometry_msgs::msg::Twist>::SharedPtr         pub_tello_twist;
 
     //storage of received messages fields
-
     std::string Tello_sub_string;
     unsigned char Tello_sub_rc;
     unsigned char tello_srv_rc;
@@ -247,10 +246,12 @@ private:
     };
 
     class StateGoToPosition : public SuperState {
+    public:
+        tf2::Vector3 integral = tf2::Vector3(0.0,0.0,0.0);
+
         SuperState*  next_state(TelloController* node) override{
             tf2::Vector3 Kp = tf2::Vector3(0.5,0.5,0.5);
-            tf2::Vector3 Ki = tf2::Vector3(0.3,0.3,0.2);
-            tf2::Vector3 integral = tf2::Vector3(0.0,0.0,0.0);
+            tf2::Vector3 Ki = tf2::Vector3(0.01,0.01,0.01);
             double dt = 0.2;
             std::printf("  state: GoToPosition\n");
             if (node->key_input == 'q'){
