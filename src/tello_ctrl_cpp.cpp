@@ -248,11 +248,11 @@ private:
     class StateGoToPosition : public SuperState {
     public:
         tf2::Vector3 integral = tf2::Vector3(0.0,0.0,0.0);
+        const tf2::Vector3 Kp = tf2::Vector3(0.5,0.5,0.5);
+        const tf2::Vector3 Ki = tf2::Vector3(0.01,0.01,0.01);
+        const double dt = 0.2;
 
         SuperState*  next_state(TelloController* node) override{
-            tf2::Vector3 Kp = tf2::Vector3(0.5,0.5,0.5);
-            tf2::Vector3 Ki = tf2::Vector3(0.01,0.01,0.01);
-            double dt = 0.2;
             std::printf("  state: GoToPosition\n");
             if (node->key_input == 'q'){
                 node->pub_tello_twist->publish(geometry_msgs::msg::Twist());
