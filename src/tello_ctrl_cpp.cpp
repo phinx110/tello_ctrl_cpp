@@ -36,7 +36,7 @@ public:
         //create timers
         tick_timer = create_wall_timer(200ms, std::bind(&TelloController::tick_timer_callback, this));
 
-        //creat actions
+        //creat client (not an actual action)
         srv_tello_cmd = create_client<tello_msgs::srv::TelloAction>("/solo/tello_action");
 
         //creat subscriptions
@@ -47,18 +47,18 @@ public:
         //creat publishers
         pub_tello_twist = create_publisher<geometry_msgs::msg::Twist>("/solo/cmd_vel", default_qos);
 
-        //create clock (for tf2 buffer)
+        //creat TF2 clock, buffer and listener
         clock = std::make_shared<rclcpp::Clock>(RCL_SYSTEM_TIME);
-
-        //creat TF2
         tf2_buffer = std::make_shared<tf2_ros::Buffer>(clock);
         tf2_listener = std::make_shared<tf2_ros::TransformListener>(*tf2_buffer);
         tf2_valid = false;
         last_time_tf2_valid = rclcpp::Time(0,0);
 
-        //define demo station point
+        //initial demo position
         demo_position = tf2::Transform();
         demo_position.setOrigin(tf2::Vector3(0.0,0.2,1.0));
+
+        //when in position, angle offset so marker is on the side
         demo_position_angle_offset = 0.2;
     }
 
@@ -68,32 +68,31 @@ private:
     rclcpp::QoS default_qos;
 
     //ROS2 timer
-    rclcpp::TimerBase::SharedPtr                                    tick_timer;
+    rclcpp::TimerBase::SharedPtr    tick_timer;
+    size_t                          tick_counter;
 
     //ROS2 communication
     rclcpp::Client<tello_msgs::srv::TelloAction>::SharedPtr         srv_tello_cmd;
+    rclcpp::Client<tello_msgs::srv::TelloAction>::SharedFuture      future_srv_tello_cmd;
     rclcpp::Subscription<std_msgs::msg::Char>::SharedPtr            sub_key_input;
     rclcpp::Subscription<tello_msgs::msg::TelloResponse>::SharedPtr sub_tello_response;
     rclcpp::Subscription<geometry_msgs::msg::Point>::SharedPtr      sub_demo_position;
     rclcpp::Publisher<geometry_msgs::msg::Twist>::SharedPtr         pub_tello_twist;
-    rclcpp::Client<tello_msgs::srv::TelloAction>::SharedFuture      future_srv_tello_cmd;
 
     //storage of received messages fields
-    size_t tick_counter;
-    char key_input;
-    char Tello_sub_rc;
-    char tello_srv_rc;
-    std::string Tello_sub_string;
 
-    //ROS2 clock
-    rclcpp::Clock::SharedPtr clock;
+    std::string Tello_sub_string;
+    unsigned char Tello_sub_rc;
+    unsigned char tello_srv_rc;
+    unsigned char key_input;
 
     //ROS2 TF2
+    bool tf2_valid;
+    rclcpp::Time last_time_tf2_valid;
+    rclcpp::Clock::SharedPtr clock;
     std::shared_ptr<tf2_ros::Buffer> tf2_buffer;
     std::shared_ptr<tf2_ros::TransformListener> tf2_listener;
     geometry_msgs::msg::Transform DroneInMarker001Frame;
-    bool tf2_valid;
-    rclcpp::Time last_time_tf2_valid;
 
     //positioning
     tf2::Transform demo_position;
@@ -103,7 +102,7 @@ private:
     |    MEMBER FUNCTIONS    |
     \************************/
 
-    //client send message to drone with attached callback
+    //client: send message to drone (driver) with attached callback
     void send_tello_cmd (std::string cmd){
         while (!srv_tello_cmd->wait_for_service(std::chrono::seconds(1))) {
             if (!rclcpp::ok()) {
@@ -135,10 +134,11 @@ private:
         demo_position.setOrigin(tf2::Vector3(msg.get()->x,msg.get()->y,msg.get()->z));
     }
 
-    //definition state mashine abstract class inferited by all states
+    //definition state mashine abstract class inherited by all states
     class SuperState {
        public:
         virtual SuperState* next_state(TelloController*) = 0;
+        virtual ~SuperState(){}
     };
     SuperState* tello_state;
 
@@ -147,14 +147,12 @@ private:
         RCLCPP_INFO(this->get_logger(), "\n  Timer:%i\tkey: %c  ", tick_counter, key_input);
         std::printf("  srv_rc: %i\t\t  sub_rc: %i\tsub_str: %s\n", tello_srv_rc, Tello_sub_rc, Tello_sub_string.c_str());
         if(tf2_buffer->canTransform("marker_001", tf2::TimePointZero, "base_link", tf2::TimePointZero, "map")){
-            geometry_msgs::msg::Transform sample = tf2_buffer->lookupTransform("marker_001", tf2::TimePointZero, "base_link", tf2::TimePointZero, "map").transform;
-            tf2_valid = sample != DroneInMarker001Frame;
+            geometry_msgs::msg::Transform new_DroneInMarker001Frame = tf2_buffer->lookupTransform("marker_001", tf2::TimePointZero, "base_link", tf2::TimePointZero, "map").transform;
+            tf2_valid = new_DroneInMarker001Frame != DroneInMarker001Frame;
             if(tf2_valid){
-            DroneInMarker001Frame = sample;
-            last_time_tf2_valid  = this->now(); //lookupTransform timestamp is buggy
+            DroneInMarker001Frame = new_DroneInMarker001Frame;
+            last_time_tf2_valid  = this->now(); //lookupTransform timestamp in header is buggy
             }
-        }else{
-            tf2_valid = false;
         }
         SuperState* sequal = tello_state->next_state(this);
         if(sequal!=tello_state){
@@ -223,6 +221,7 @@ private:
     public:
         rclcpp::Time stop;
         geometry_msgs::msg::Twist twist;
+
         StateSearchAruco(TelloController* node){
             stop = node->now() + rclcpp::Duration(20,0);
             twist = geometry_msgs::msg::Twist();
@@ -232,7 +231,6 @@ private:
 
         SuperState*  next_state(TelloController* node) override{
             std::printf("  state: SearchAruco\n");
-
             if (node->key_input == 'q'){
                 node->pub_tello_twist->publish(geometry_msgs::msg::Twist());
                 return new StateSteady;
@@ -249,7 +247,6 @@ private:
     };
 
     class StateGoToPosition : public SuperState {
-
         SuperState*  next_state(TelloController* node) override{
             tf2::Vector3 Kp = tf2::Vector3(0.5,0.5,0.5);
             tf2::Vector3 Ki = tf2::Vector3(0.3,0.3,0.2);
@@ -313,9 +310,7 @@ private:
         }
     };
 
-    // end of TelloController class
-};
-
+};// end of TelloController class
 
 int main(int argc, char* argv[])
 {
