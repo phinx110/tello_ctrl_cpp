@@ -25,7 +25,7 @@ pub_tello_twist publisches twist comands to the tello driver to move the drone.
 
 #### State machine
 
-Image below is the state machine. Press 'q' to either liftoff, land or abort search, and 'w' to search for the Aruco marker.
+Image below is the state machine. Press 'q' to either liftoff, land or abort search, and 'w' to search for the Aruco marker. Blue arrows represent a transition duo to input from sub_key_input and red arrows represent a transition done by the controller itself.
 
 ![alt text](https://raw.githubusercontent.com/phinx110/tello_ctrl_cpp/master/state_machine.png)
 
