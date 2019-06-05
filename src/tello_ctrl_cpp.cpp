@@ -56,7 +56,7 @@ public:
 
         //initial demo position
         demo_position = tf2::Transform();
-        demo_position.setOrigin(tf2::Vector3(0.0,0.2,1.0));
+        demo_position.setOrigin(tf2::Vector3(0.0,0.3,1.5));
 
         //when in position, angle offset so marker is on the side
         demo_position_angle_offset = 0.2;
