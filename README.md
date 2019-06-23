@@ -1,3 +1,5 @@
+Written for Kapernikov cvba during my internship.
+
 # Drone controller
 
 The brain of the Tello drone.
